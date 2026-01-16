@@ -13,7 +13,6 @@ jobs:
   Build-Android:
     runs-on: ubuntu-latest
     
-    # Мы используем чуть более мощную машину, если доступна, или стандартную
     env:
       ANDROID_BUILD_PLATFORM: android-36
       QT_VERSION: 6.10.1
@@ -85,22 +84,31 @@ jobs:
       with:
         ndk-version: 'r26b'
 
-    # ШАГ УДАЛЕН: Decode keystore (у нас нет ключей, и это нормально)
+    # --- ВОТ ГЛАВНОЕ ИСПРАВЛЕНИЕ: Создаем ключ-пустышку ---
+    - name: 'Generate Dummy Keystore'
+      run: |
+        keytool -genkey -v -keystore android.keystore -alias flyvpn_key \
+        -keyalg RSA -keysize 2048 -validity 10000 \
+        -storepass 123456 -keypass 123456 \
+        -dname "CN=FlyVPN, O=FlyCorp, C=US"
 
     - name: 'Build project'
       env:
         ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
         QT_HOST_PATH: ${{ runner.temp }}/Qt/${{ env.QT_VERSION }}/gcc_64
-        # Убрали ссылки на секретные ключи, чтобы сборка не падала
+        # Указываем путь к нашему фейковому ключу
+        ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/android.keystore
+        ANDROID_KEYSTORE_KEY_ALIAS: flyvpn_key
+        ANDROID_KEYSTORE_KEY_PASS: 123456
+        ANDROID_KEYSTORE_STORE_PASS: 123456
       shell: bash
-      # Запускаем сборку. Скрипт сам поймет, что ключей нет, и соберет unsigned или debug версию.
+      # Убрали флаг --aab, оставили только APK. Это надежнее.
       run: ./deploy/build_android.sh --apk all --build-platform ${{ env.ANDROID_BUILD_PLATFORM }}
 
     - name: 'Rename Android APKs'
       run: |
         cd deploy/build
-        # Пытаемся переименовать файлы, если они создались
-        find . -name "AmneziaVPN-*-release.apk" -exec bash -c 'mv "$1" "AmneziaVPN_${VERSION}_${1#./AmneziaVPN-}"' _ {} \; || true
+        find . -name "AmneziaVPN-*-release.apk" -exec bash -c 'mv "$1" "FlyVPN_${1#./AmneziaVPN-}"' _ {} \; || true
         cd ../..
 
     - name: 'Upload APK Artifacts'
