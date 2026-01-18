@@ -1,0 +1,76 @@
+name: Build Amnezia Client Android APK (Fork Adapted)
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    env:
+      # Используем официальные версии из рабочего процесса Amnezia VPN
+      QT_VERSION: 6.4.1
+      NDK_VERSION: 23c
+      ANDROID_NDK_PLATFORM: android-23
+
+    steps:
+    - name: Get sources
+      uses: actions/checkout@v4 # Используем v4 для свежести
+      with:
+        submodules: 'true'
+        fetch-depth: 1 # Нет необходимости глубоко клонировать историю
+
+    # Попробуем снова использовать официальное действие jurplel, оно должно работать
+    - name: 'Install android Qt arm_v8'
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: ${{ env.QT_VERSION }}
+        host: 'linux'
+        target: 'android'
+        arch: 'android_arm64_v8a'
+        modules: 'qtremoteobjects qt5compat qtimageformats qtshadertools network' # Добавил network на всякий случай
+        dir: ${{ runner.temp }}
+        setup-python: 'true'
+        set-env: 'true'
+
+    - name: 'Setup Java'
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '11'
+
+    - name: 'Install Android NDK and run build script'
+      run: |
+        # Установка NDK вручную, как в оригинальном скрипте
+        export ANDROID_NDK_HOME=${{ runner.temp }}/android-ndk-r${{ env.NDK_VERSION }}
+        export ANDROID_NDK_ROOT=$ANDROID_NDK_HOME
+
+        if [ ! -f $ANDROID_NDK_ROOT/ndk-build ]; then 
+          echo "Downloading NDK r${{ env.NDK_VERSION }}"
+          wget https://dl.google.com/android/repository/android-ndk-r${{ env.NDK_VERSION }}-linux.zip -qO ${{ runner.temp }}/ndk.zip &&
+          unzip -q -d ${{ runner.temp }} ${{ runner.temp }}/ndk.zip ; 
+        fi
+        
+        # Устанавливаем пути, которые ожидает скрипт build_android.sh
+        export QT_HOST_PATH="${{ runner.temp }}/Qt/${{ env.QT_VERSION }}/gcc_64"
+        export QT_BIN_DIR=${{ runner.temp }}/Qt/${{ env.QT_VERSION }}/android_arm64_v8a/bin
+        
+        # Запускаем официальный скрипт сборки из репозитория
+        bash deploy/build_android.sh
+
+    # Шаги 4, 5, 6 из оригинального файла (получение секретов и подпись) ПРОПУЩЕНЫ, 
+    # потому что у вас нет доступа к приватным ключам.
+
+    - name: 'Upload Unsigned APK Artifact'
+      uses: actions/upload-artifact@v4
+      with:
+        name: AmneziaVPN-Android-Unsigned-APK
+        # Скрипт build_android.sh кладет APK в корень репозитория
+        path: AmneziaVPN-release-unsigned.apk
