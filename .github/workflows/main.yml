@@ -26,15 +26,16 @@ jobs:
         distribution: 'temurin'
         java-version: '11'
         
-    # ИСПРАВЛЕННЫЙ ШАГ: Установка Qt с помощью другого действия
-    - name: Install Qt 5.15.2 for Android
+    # ИСПРАВЛЕННЫЙ ШАГ: Установка Qt 6
+    - name: Install Qt 6.5.0 for Android
       uses: Skycoder42/action-setup-qt@v1
       with:
-        version: 5.15.2
+        version: 6.5.0 # Используем версию 6.5.0, проверенную для Android
         target: android
+        # Note: Qt6 использует другие имена архитектур, arm64_v8a обычно достаточно
         arch: android_arm64_v8a
-        dir: ${{ runner.temp }}/Qt # Временная директория для установки
-        
+        dir: ${{ runner.temp }}/Qt 
+
     - name: Install Android SDK, NDK and CMake
       uses: android-actions/setup-android@v3
 
@@ -43,21 +44,23 @@ jobs:
         yes | sdkmanager --licenses > /dev/null
 
     - name: Install specific Android SDK platforms and NDK
+      # Проект требует SDK Platform 33 и определенную версию NDK
       run: |
-        # Проект использует определенные версии.
         sdkmanager "platforms;android-33" "ndk;25.1.8937393"
 
-    - name: Configure CMake for Android Build
+    - name: Configure CMake for Android Build (Qt 6 focused)
       run: |
-        # Важно: нам нужно правильно указать путь к qmake/cmake из нового места установки
-        export QT_QMAKE_EXECUTABLE=${{ runner.temp }}/Qt/5.15.2/android_arm64_v8a/bin/qmake
+        # Устанавливаем переменные окружения для CMake, указывая, где искать Qt6
+        export Qt6_DIR=${{ runner.temp }}/Qt/6.5.0/android_arm64_v8a/lib/cmake/Qt6
+        
         cmake -S client -B build_android \
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_PLATFORM=android-33 \
           -DANDROID_ABI=arm64-v8a \
           -DANDROID_STL=c++_shared \
           -DCMAKE_BUILD_TYPE=Release \
-          -DQT_QMAKE_EXECUTABLE=$QT_QMAKE_EXECUTABLE
+          -DCMAKE_PREFIX_PATH=${{ runner.temp }}/Qt/6.5.0/android_arm64_v8a/
+          # DQT_QMAKE_EXECUTABLE больше не нужен, CMake найдет Qt6 через Qt6_DIR
 
     - name: Build Android Project
       run: |
@@ -67,4 +70,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: AmneziaVPN-Android-APK
+        # Путь к сгенерированному APK файлу.
         path: build_android/client/android-build/build/outputs/apk/release/*.apk
