@@ -26,57 +26,45 @@ jobs:
         distribution: 'temurin'
         java-version: '11'
         
+    # ИСПРАВЛЕННЫЙ ШАГ: Установка Qt с помощью другого действия
     - name: Install Qt 5.15.2 for Android
-      # Используем готовый Action для установки Qt
-      uses: jurp/install-qt-action@v3
+      uses: Skycoder42/action-setup-qt@v1
       with:
-        version: '5.15.2'
-        aqtversion: '3.1.4'
-        host: 'linux'
-        target: 'android'
-        arch: 'android_arm64_v8a' # Вы можете добавить другие ABI позже при необходимости
-
+        version: 5.15.2
+        target: android
+        arch: android_arm64_v8a
+        dir: ${{ runner.temp }}/Qt # Временная директория для установки
+        
     - name: Install Android SDK, NDK and CMake
-      # Используем Action для установки всех инструментов командной строки Android
       uses: android-actions/setup-android@v3
 
     - name: Accept Android SDK licenses
       run: |
-        # Необходимо для автоматической сборки
         yes | sdkmanager --licenses > /dev/null
 
     - name: Install specific Android SDK platforms and NDK
       run: |
+        # Проект использует определенные версии.
         sdkmanager "platforms;android-33" "ndk;25.1.8937393"
-      # Проект требует SDK Platform 33 и определенную версию NDK
 
     - name: Configure CMake for Android Build
       run: |
-        # Конфигурирование проекта с указанием путей к Android SDK и NDK
-        # Переменные окружения ANDROID_HOME, ANDROID_NDK_ROOT устанавливаются предыдущими Actions
+        # Важно: нам нужно правильно указать путь к qmake/cmake из нового места установки
+        export QT_QMAKE_EXECUTABLE=${{ runner.temp }}/Qt/5.15.2/android_arm64_v8a/bin/qmake
         cmake -S client -B build_android \
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_PLATFORM=android-33 \
           -DANDROID_ABI=arm64-v8a \
           -DANDROID_STL=c++_shared \
           -DCMAKE_BUILD_TYPE=Release \
-          -DQT_QMAKE_EXECUTABLE=${{ env.Qt5_Dir }}/bin/qmake
+          -DQT_QMAKE_EXECUTABLE=$QT_QMAKE_EXECUTABLE
 
     - name: Build Android Project
       run: |
         cmake --build build_android --parallel $(nproc)
 
-    - name: Sign and Align APK (Requires Keystore setup - skipped for now)
-      run: |
-        echo "APK built but not signed. Signing skipped in this basic example."
-
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: AmneziaVPN-Android-APK
-        # Путь к сгенерированному APK файлу может отличаться, 
-        # но обычно он находится где-то в директории сборки. 
-        # Уточним путь после первого запуска.
-        path: |
-          build_android/client/android-build/build/outputs/apk/release/*.apk 
-          # или другой путь, который будет виден в логах после первого прогона
+        path: build_android/client/android-build/build/outputs/apk/release/*.apk
